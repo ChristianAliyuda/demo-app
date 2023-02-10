@@ -64,22 +64,29 @@ jobs:
      - name: Setup kubeconfig
        id: setup-kubeconfig
        run: |
-         aws eks --region us-east-1 update-kubeconfig --name demo
-         
-     - name: Deploy k8s yaml
-       id: deploy-k8s-yaml
-       env:
-         K8S_YAML_DIR: ./K8S
-         IMAGE_NAME: ${{ steps.build-image.outputs.image }}
-       run: |
-         # Setup kustomize
-         cd $K8S_YAML_DIR
-         curl -s -o kustomize --location https://github.com/kubernetes-sigs/kustomize/releases/download/v3.1.0/kustomize_3.1.0_linux_amd64
-         chmod u+x ./kustomize
-         ./kustomize edit set image example-eks=$IMAGE_NAME
-         ./kustomize build . | kubectl apply -f -
-         # Verify deployment
-         kubectl rollout status deployment/aws-example-octodex
-         # List Public IP of cluster
-         kubectl get services -o wide
-         kubectl get ingress
+         aws eks --region us-east-1 update-kubeconfig --name demo      
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Log in to Amazon EKS
+      run: |
+        echo Logging in to Amazon EKS…
+        aws eks --region $AWS_DEFAULT_REGION update-kubeconfig --name $AWS_CLUSTER_NAME
+
+    - name: Build and push Docker image
+      run: |
+        echo Build completed on `date`
+        echo Pushing the Docker image…
+        docker push $AWS_ACCOUNT_ID.dkr.ecr $AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG
+
+    - name: Update kubeconfig
+      run: |
+        echo Push the latest image to cluster
+        aws eks update-kubeconfig --region $AWS_DEFAULT_REGION --name $AWS_CLUSTER_NAME
+
+    - name: Apply deployment.yaml
+      run: kubectl apply -f eks_cicd/deployment.yaml 
+
+    - name: Restart deployment
+      run: kubectl rollout restart -f eks_cicd/deployment.yaml
